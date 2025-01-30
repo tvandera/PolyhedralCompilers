@@ -15,8 +15,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential libtool autoconf automake pkg-config flex bison libgmp-dev \
     clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
     ccache \
-    wget curl libhdf5-dev python3 python3-dev python3-pip \
-    libjpeg-dev zlib1g-dev && \
+    wget curl rsync \
+    python3 python3-dev python3-pip \
+    libhdf5-dev  libjpeg-dev zlib1g-dev && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*
 
@@ -59,7 +60,7 @@ FROM base AS pluto-build
 ARG PLUTO_REPO_URL="https://sourceforge.net/projects/pluto-compiler/files/pluto-0.11.4.tar.gz"
 RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-components 1 && \
     cd /pluto && \
-    ./configure && \
+    ./configure --disable-static && \
     make -j$(nproc) && \
     make install && \
     ldconfig
@@ -76,6 +77,15 @@ RUN git clone ${PPCG_REPO_URL} && \
     ./configure && \
     make -j && \
     make install
+
+# Stage 5: pocc Build
+FROM base AS pocc-build
+
+ARG POCC_REPO_URL="https://sourceforge.net/projects/pocc/files/1.6/release/pocc-1.6.0-alpha-selfcontained.tar.gz"
+RUN wget -qO- ${POCC_REPO_URL} | \
+    tar xz --one-top-level=/pocc --strip-components 1 && \
+    cd /pocc && \
+    bash -x ./install.sh
 
 # Stage 4: Final Runtime Image
 FROM ubuntu:20.04 AS runtime
