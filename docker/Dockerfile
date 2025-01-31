@@ -12,9 +12,9 @@ RUN echo "User ID: $UID"
 
 # Install essential build tools and dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libtool autoconf automake pkg-config flex bison libgmp-dev \
+    build-essential libtool autoconf automake libltdl-dev pkg-config flex bison libgmp-dev \
     clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
-    ccache \
+    libxml2-dev ccache ghostscript \
     wget curl rsync \
     python3 python3-dev python3-pip \
     libhdf5-dev  libjpeg-dev zlib1g-dev && \
@@ -85,7 +85,53 @@ ARG POCC_REPO_URL="https://sourceforge.net/projects/pocc/files/1.6/release/pocc-
 RUN wget -qO- ${POCC_REPO_URL} | \
     tar xz --one-top-level=/pocc --strip-components 1 && \
     cd /pocc && \
-    bash -x ./install.sh
+    bash -x ./install.sh && \
+    make install
+
+
+# == Graphite Installation ==
+FROM base AS graphite-build
+
+ARG GCC_COMMIT="0bdc158d3ee26c61b6b277238944ca5f0409e151" # snapshot of 20220819
+ARG GCC_URL="https://github.com/gcc-mirror/gcc/archive/${GCC_COMMIT}.tar.gz"
+
+RUN wget -qO- ${GCC_URL} | \
+    tar xz --one-top-level=/gcc --strip-components 1 && \
+    cd /gcc && \
+    ./contrib/download_prerequisites && \
+    ./configure --host=x86_64-pc-linux-gnu --disable-multilib && \
+    make -j32 && \
+    make install
+
+#rose installation
+FROM base AS rose-build
+
+
+ARG BOOST_URL="https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz"
+RUN wget -qO- ${BOOST_URL} |  \
+    tar xz --one-top-level=/boost --strip-components 1 && \
+    cd /boost && \
+    ./bootstrap.sh && \
+    ./b2 --prefix=/boost/install link=static install
+
+ARG ROSE_URL="https://github.com/rose-compiler/rose/archive/refs/tags/v0.11.100.0.tar.gz"
+
+RUN wget -qO- ${ROSE_URL} | \
+    tar xz --one-top-level=/rose --strip-components 1 && \
+    cd /rose && \
+    sed -i '1 i\#include <map>'  ./tests/smoke/unit/Sawyer/hashMapUnitTests.C && \
+    ./build && \
+    mkdir /rosebuild && \
+    cd /rosebuild && \
+    /rose/configure --disable-shared --enable-languages=c,c++ --with-boost=/boost/install && \
+    make -j && \
+    make install
+
+RUN BOOST_ROOT="/boost/boost-install/" && \
+    cd /rose/projects/PolyOpt2 && \
+    ./install.sh && \
+    make install
+
 
 # Stage 4: Final Runtime Image
 FROM ubuntu:20.04 AS runtime
