@@ -106,7 +106,6 @@ RUN wget -qO- ${GCC_URL} | \
 #rose installation
 FROM base AS rose-build
 
-
 ARG BOOST_URL="https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz"
 RUN wget -qO- ${BOOST_URL} |  \
     tar xz --one-top-level=/boost --strip-components 1 && \
@@ -123,20 +122,32 @@ RUN wget -qO- ${ROSE_URL} | \
     ./build && \
     mkdir /rosebuild && \
     cd /rosebuild && \
-    /rose/configure --disable-shared --enable-languages=c,c++ --with-boost=/boost/install && \
-    make -j && \
-    make install
+    /rose/configure \
+        --prefix=/usr/local \
+        --disable-shared \
+        --enable-languages=c,c++ \
+        --with-boost=/boost/install && \
+    make -j core && \
+    make install-core
 
-RUN BOOST_ROOT="/boost/boost-install/" && \
+RUN export ROSE_ROOT=/usr/local && \
+    export BOOST_ROOT="/boost/install" && \
     cd /rose/projects/PolyOpt2 && \
     ./install.sh && \
-    make install
+    make -j install
 
+# intel compiler
+FROM base AS intel-build
+
+COPY l_BaseKit_p_2021.4.0.3422.sh .
+COPY l_HPCKit_p_2021.4.0.3347.sh .
+RUN bash l_BaseKit_p_2021.4.0.3422.sh -a --silent --eula accept
+RUN bash l_HPCKit_p_2021.4.0.3347.sh -a --silent --eula accept
 
 # Stage 4: Final Runtime Image
 FROM ubuntu:20.04 AS runtime
 ARG DEBIAN_FRONTEND=noninteractive
-ENV POLYHEDRAL_DIR="/usr/local/lib/polyhedral"
+ENV POLYHEDRAL_DIR="/polyhedral"
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -144,14 +155,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
-COPY --from=llvm-build /usr/local /usr/local
-COPY --from=pluto-build /usr/local /usr/local
+# COPY --from=llvm-build /usr/local /usr/local
+# COPY --from=pluto-build /usr/local /usr/local
 
-# Set up runtime paths
-ENV PATH="${PATH}:${POLYHEDRAL_DIR}/llvm-project/build/bin"
-ENV LD_LIBRARY_PATH="/usr/local/lib:${LD_LIBRARY_PATH}"
-
-# Set the working directory
 WORKDIR ${POLYHEDRAL_DIR}
+COPY execute_polyhedral.sh .
+COPY execute_polyhedral_syn.sh .
+
 CMD ["/bin/bash"]
 
