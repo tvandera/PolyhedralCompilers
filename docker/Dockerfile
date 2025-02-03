@@ -132,12 +132,12 @@ RUN wget -qO- ${ROSE_URL} | \
     mkdir /rosebuild && \
     cd /rosebuild && \
     /rose/configure \
-        --prefix=/usr/local \
-        --disable-shared \
+        --prefix=/usr/local/polyhedral/rose \
         --enable-languages=c,c++ \
         --with-boost=/boost/install && \
     make -j core && \
-    make install-core
+    make install-core && \
+    ln -s /usr/local/polyhedral/rose/bin/rose-compiler /usr/local/bin/rose-compiler
 
 # RUN export ROSE_ROOT=/usr/local  \
 #     export BOOST_ROOT="/boost/install" \
