@@ -60,16 +60,16 @@ FROM base AS graphite-build
 ARG GCC_COMMIT="0bdc158d3ee26c61b6b277238944ca5f0409e151" # snapshot of 20220819
 ARG GCC_URL="https://github.com/gcc-mirror/gcc/archive/${GCC_COMMIT}.tar.gz"
 
-RUN wget -qO- ${GCC_URL} |
-    tar xz --one-top-level=/gcc --strip-components 1 &&
-    cd /gcc &&
-    ./contrib/download_prerequisites &&
+RUN wget -qO- ${GCC_URL} | \
+    tar xz --one-top-level=/gcc --strip-components 1 && \
+    cd /gcc && \
+    ./contrib/download_prerequisites && \
     ./configure \
         --prefix=/usr/local/polyhedral/graphite \
         --host=x86_64-pc-linux-gnu \
-        --disable-multilib &&
-    make -j32 &&
-    make install &&
+        --disable-multilib && \
+    make -j32 && \
+    make install && \
     ln -s /usr/local/polyhedral/graphite/bin/gcc /usr/local/bin/graphite-gcc
 
 # Stage 3: Pluto Build
@@ -108,9 +108,7 @@ RUN wget -qO- ${POCC_REPO_URL} | \
     tar xz --one-top-level=/pocc --strip-components 1 && \
     cd /pocc && \
     bash -x ./install.sh && \
-    make install
-
-
+# ln -s /usr/local/polyhedral/pocc/bin/pocc /usr/local/bin/pocc
 
 #rose installation
 FROM pocc-build AS rose-build
