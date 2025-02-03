@@ -1,23 +1,17 @@
 # Base Stage: Common build environment
 FROM ubuntu:20.04 AS base
 
-ARG DEBIAN_FRONTEND=noninteractive
-ENV POLYHEDRAL_DIR="/usr/local/lib/polyhedral"
-
-# Set ARGs for user ID and GID (optional)
-ARG GID
-ARG UID
-RUN echo "Group ID: $GID"
-RUN echo "User ID: $UID"
+ENV POLYHEDRAL_DIR="/polyhedral"
 
 # Install essential build tools and dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libtool autoconf automake libltdl-dev pkg-config flex bison libgmp-dev \
-    clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
-    libxml2-dev ccache ghostscript \
-    wget curl rsync \
-    python3 python3-dev python3-pip \
-    libhdf5-dev  libjpeg-dev zlib1g-dev && \
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        build-essential libtool autoconf automake libltdl-dev pkg-config flex bison libgmp-dev \
+        clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
+        libxml2-dev ccache ghostscript \
+        wget curl rsync \
+        python3 python3-dev python3-pip \
+        libhdf5-dev  libjpeg-dev zlib1g-dev && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*
 
@@ -54,8 +48,26 @@ RUN mkdir -p /tmp/build-llvm && \
     ninja all && \
     ninja install
 
+# == Graphite Installation ==
+FROM base AS graphite-build
+
+ARG GCC_COMMIT="0bdc158d3ee26c61b6b277238944ca5f0409e151" # snapshot of 20220819
+ARG GCC_URL="https://github.com/gcc-mirror/gcc/archive/${GCC_COMMIT}.tar.gz"
+
+RUN wget -qO- ${GCC_URL} | \
+    tar xz --one-top-level=/gcc --strip-components 1 && \
+    cd /gcc && \
+    ./contrib/download_prerequisites && \
+    ./configure \
+        --program-prefix=graphite- \
+        --host=x86_64-pc-linux-gnu \
+        --disable-multilib \
+    && \
+    make -j32 && \
+    make install
+
 # Stage 3: Pluto Build
-FROM base AS pluto-build
+FROM graphite-build AS pluto-build
 
 ARG PLUTO_REPO_URL="https://sourceforge.net/projects/pluto-compiler/files/pluto-0.11.4.tar.gz"
 RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-components 1 && \
@@ -65,6 +77,7 @@ RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-componen
     sed -i -e 's#/pluto/src/#/usr/local/bin/#' polycc && \
     sed -i -e 's#/pluto/#/usr/local/bin/#' polycc && \
     make install && \
+    install inscop /usr/local/bin/ && \
     ldconfig
 
 # Stage 4: ppcg Build
@@ -91,22 +104,9 @@ RUN wget -qO- ${POCC_REPO_URL} | \
     make install
 
 
-# == Graphite Installation ==
-FROM base AS graphite-build
-
-ARG GCC_COMMIT="0bdc158d3ee26c61b6b277238944ca5f0409e151" # snapshot of 20220819
-ARG GCC_URL="https://github.com/gcc-mirror/gcc/archive/${GCC_COMMIT}.tar.gz"
-
-RUN wget -qO- ${GCC_URL} | \
-    tar xz --one-top-level=/gcc --strip-components 1 && \
-    cd /gcc && \
-    ./contrib/download_prerequisites && \
-    ./configure --host=x86_64-pc-linux-gnu --disable-multilib && \
-    make -j32 && \
-    make install
 
 #rose installation
-FROM base AS rose-build
+FROM pocc-build AS rose-build
 
 ARG BOOST_URL="https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz"
 RUN wget -qO- ${BOOST_URL} |  \
@@ -132,12 +132,18 @@ RUN wget -qO- ${ROSE_URL} | \
     make -j core && \
     make install-core
 
-RUN export ROSE_ROOT=/usr/local && \
-    export BOOST_ROOT="/boost/install" && \
-    cd /rose/projects/PolyOpt2 && \
-    ./install.sh && \
-    make -j install
-
+# RUN export ROSE_ROOT=/usr/local  \
+#     export BOOST_ROOT="/boost/install" \
+#     export CXX=clang++ \
+#     export CC=clang && \
+#     cd /rose/projects/PolyOpt2 && \
+#     ./configure \
+#         --with-boost=${BOOST_ROOT} \
+#         --with-rose=${ROSE_ROOT} \
+#         --with-pocc-prefix=$POCC_INSTALL_ROOT
+#     ./install.sh && \
+#     make -j install
+#
 # intel compiler
 FROM base AS intel-build
 
@@ -146,23 +152,28 @@ COPY l_HPCKit_p_2021.4.0.3347.sh .
 RUN bash l_BaseKit_p_2021.4.0.3422.sh -a --silent --eula accept
 RUN bash l_HPCKit_p_2021.4.0.3347.sh -a --silent --eula accept
 
+# polybench
+FROM base AS polybench-build
+ARG POLYBENCH_URL="https://sourceforge.net/projects/polybench/files/polybench-c-4.2.tar.gz"
+RUN wget -qO- ${POLYBENCH_URL} | tar xz --one-top-level=${POLYHEDRAL_DIR} --strip-components 1
+
 # Stage 4: Final Runtime Image
 FROM ubuntu:20.04 AS runtime
-ARG DEBIAN_FRONTEND=noninteractive
-ENV POLYHEDRAL_DIR="/polyhedral"
 
 # Install runtime dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgmp10 libgcc1 libstdc++6 zlib1g && \
-    rm -rf /var/lib/apt/lists/*
+RUN export DEBIAN_FRONTEND=noninteractive && \
+    apt-get update && apt-get install -y --no-install-recommends \
+        vim libgmp10 libgcc1 libstdc++6 zlib1g && \
+        rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
+RUN rm -rf /usr/local
 # COPY --from=llvm-build /usr/local /usr/local
-# COPY --from=pluto-build /usr/local /usr/local
+COPY --from=pluto-build /usr/local /usr/local
+COPY --from=polybench-build ${POLYHEDRAL_DIR} ${POLYHEDRAL_DIR}
+COPY execute_polyhedral.sh ${POLYHEDRAL_DIR}
+COPY execute_polyhedral_syn.sh ${POLYHEDRAL_DIR}
 
 WORKDIR ${POLYHEDRAL_DIR}
-COPY execute_polyhedral.sh .
-COPY execute_polyhedral_syn.sh .
-
 CMD ["/bin/bash"]
 
