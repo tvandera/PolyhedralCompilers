@@ -10,15 +10,12 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
         clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
         libxml2-dev ccache ghostscript \
         wget curl rsync \
-        python3 python3-dev python3-pip \
+        python3 python3-dev python3-pip python3-pandas python3-numpy python3-scipy \
+        python3-pybind11 python3-yaml python3-tables \
         libhdf5-dev  libjpeg-dev zlib1g-dev && \
     ln -sf /usr/bin/python3 /usr/bin/python && \
     rm -rf /var/lib/apt/lists/*
 
-
-# Install Python packages
-RUN pip3 install --upgrade pip && pip install --no-cache-dir \
-    matplotlib numpy pandas scipy tables pybind11>=2.8.0 PyYAML dataclasses
 
 ARG CMAKE_FILE="https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.tar.gz"
 RUN wget -qO- ${CMAKE_FILE} | tar xz --one-top-level=/usr/local --strip-components 1
