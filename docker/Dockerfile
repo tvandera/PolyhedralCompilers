@@ -60,8 +60,10 @@ FROM base AS pluto-build
 ARG PLUTO_REPO_URL="https://sourceforge.net/projects/pluto-compiler/files/pluto-0.11.4.tar.gz"
 RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-components 1 && \
     cd /pluto && \
-    ./configure --disable-static && \
+    ./configure --disable-shared && \
     make -j$(nproc) && \
+    sed -i -e 's#/pluto/src/#/usr/local/bin/#' polycc && \
+    sed -i -e 's#/pluto/#/usr/local/bin/#' polycc && \
     make install && \
     ldconfig
 
