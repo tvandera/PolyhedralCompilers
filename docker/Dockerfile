@@ -17,8 +17,15 @@ RUN export DEBIAN_FRONTEND=noninteractive && \
     rm -rf /var/lib/apt/lists/*
 
 
-ARG CMAKE_FILE="https://github.com/Kitware/CMake/releases/download/v3.23.2/cmake-3.23.2-linux-x86_64.tar.gz"
-RUN wget -qO- ${CMAKE_FILE} | tar xz --one-top-level=/usr/local --strip-components 1
+RUN wget -O - https://apt.kitware.com/keys/kitware-archive-latest.asc 2>/dev/null | \
+        gpg --dearmor - | \
+        tee /usr/share/keyrings/kitware-archive-keyring.gpg >/dev/null && \
+    echo 'deb [signed-by=/usr/share/keyrings/kitware-archive-keyring.gpg] https://apt.kitware.com/ubuntu/ focal main' | \
+        tee /etc/apt/sources.list.d/kitware.list >/dev/null &&  \
+    apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends cmake && \
+    rm -rf /var/lib/apt/lists/*
+
 
 # Change default compilers to make Pluto happy.
 RUN update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm-config-9 100 && \
