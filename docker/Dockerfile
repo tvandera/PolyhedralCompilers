@@ -4,12 +4,12 @@ FROM ubuntu:20.04 AS base
 ENV POLYHEDRAL_DIR="/polyhedral"
 
 # Install essential build tools and dependencies
-RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         build-essential libtool autoconf automake libltdl-dev pkg-config flex bison libgmp-dev \
-        clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo vim ninja-build git \
+        clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo ninja-build \
         libxml2-dev ccache ghostscript \
-        wget curl rsync \
+        git wget curl rsync gpg less vim \
         python3 python3-dev python3-pip python3-pandas python3-numpy python3-scipy \
         python3-pybind11 python3-yaml python3-tables \
         libhdf5-dev  libjpeg-dev zlib1g-dev && \
