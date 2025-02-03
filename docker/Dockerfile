@@ -170,17 +170,25 @@ FROM ubuntu:20.04 AS runtime
 # Install runtime dependencies
 RUN export DEBIAN_FRONTEND=noninteractive && \
     apt-get update && apt-get install -y --no-install-recommends \
-        vim libgmp10 libgcc1 libstdc++6 zlib1g && \
-        rm -rf /var/lib/apt/lists/*
+    vim binutils libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
 RUN rm -rf /usr/local
-# COPY --from=llvm-build /usr/local /usr/local
-COPY --from=pluto-build /usr/local /usr/local
-COPY --from=polybench-build ${POLYHEDRAL_DIR} ${POLYHEDRAL_DIR}
-COPY execute_polyhedral.sh ${POLYHEDRAL_DIR}
-COPY execute_polyhedral_syn.sh ${POLYHEDRAL_DIR}
 
 WORKDIR ${POLYHEDRAL_DIR}
-CMD ["/bin/bash"]
 
+COPY --from=llvm-build /usr/local /usr/local
+COPY --from=graphite-build /usr/local /usr/local
+COPY --from=pluto-build /usr/local /usr/local
+COPY --from=ppcg-build /usr/local /usr/local
+COPY --from=pocc-build /usr/local /usr/local
+COPY --from=polybench-build /polyhedral /polyhedral
+
+COPY execute_polyhedral.sh /polyhedral
+COPY execute_polyhedral_syn.sh /polyhedral
+
+COPY local.conf /etc/ld.so.conf.d/local.conf
+RUN ldconfig -v
+
+CMD ["/bin/bash"]
