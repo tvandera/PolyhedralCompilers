@@ -65,12 +65,13 @@ RUN wget -qO- ${GCC_URL} | \
     cd /gcc && \
     ./contrib/download_prerequisites && \
     ./configure \
-        --program-prefix=graphite- \
+        --prefix=/usr/local/polyhedral/graphite \
         --host=x86_64-pc-linux-gnu \
         --disable-multilib \
     && \
     make -j32 && \
-    make install
+    make install && \
+    ln -s /usr/local/polyhedral/graphite/bin/gcc /usr/local/bin/graphite-gcc
 
 # Stage 3: Pluto Build
 FROM graphite-build AS pluto-build
