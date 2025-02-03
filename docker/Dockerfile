@@ -40,10 +40,12 @@ RUN mkdir -p /tmp/build-llvm && \
         -DCMAKE_BUILD_TYPE=Release \
         -DMLIR_ENABLE_BINDINGS_PYTHON=True \
         -DBUILD_SHARED_LIBS=True \
-        -DLLVM_CCACHE_BUILD=True \
-        -DLLVM_USE_LINKER=gold && \
+        -DLLVM_USE_LINKER=gold \
+        -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polly \
+    && \
     ninja all && \
-    ninja install
+    ninja install && \
+    ln -s /usr/local/polyhedral/polly/bin/clang /usr/local/bin/polly-clang
 
 # == Graphite Installation ==
 FROM base AS graphite-build
