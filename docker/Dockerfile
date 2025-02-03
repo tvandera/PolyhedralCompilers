@@ -73,18 +73,18 @@ RUN wget -qO- ${GCC_URL} |
     ln -s /usr/local/polyhedral/graphite/bin/gcc /usr/local/bin/graphite-gcc
 
 # Stage 3: Pluto Build
-FROM graphite-build AS pluto-build
+FROM base AS pluto-build
 
 ARG PLUTO_REPO_URL="https://sourceforge.net/projects/pluto-compiler/files/pluto-0.11.4.tar.gz"
 RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-components 1 && \
     cd /pluto && \
-    ./configure --disable-shared && \
+    ./configure --prefix=/usr/local/polyhedral/pluto && \
     make -j$(nproc) && \
-    sed -i -e 's#/pluto/src/#/usr/local/bin/#' polycc && \
-    sed -i -e 's#/pluto/#/usr/local/bin/#' polycc && \
+    sed -i -e 's#=/pluto/src/#=/usr/local/polyhedral/pluto/bin/#' polycc && \
+    sed -i -e 's#=/pluto/#=/usr/local/polyhedral/pluto/bin/#' polycc && \
     make install && \
-    install inscop /usr/local/bin/ && \
-    ldconfig
+    install inscop /usr/local/polyhedral/pluto/bin/ && \
+    ln -s /usr/local/polyhedral/pluto/bin/polycc /usr/local/bin/polycc
 
 # Stage 4: ppcg Build
 FROM base AS ppcg-build
