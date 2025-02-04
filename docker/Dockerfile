@@ -54,6 +54,61 @@ RUN mkdir -p /tmp/build-llvm && \
     ninja install && \
     ln -s /usr/local/polyhedral/polly/bin/clang /usr/local/bin/polly-clang
 
+#Polygeist Installation
+FROM base as polygeist-build
+
+ARG POLYGEIST_URL="https://github.com/llvm/Polygeist/archive/refs/heads/main-042621.tar.gz"
+RUN wget -qO- ${POLYGEIST_URL} | \
+    tar xz --one-top-level=/mlir-clang --strip-components 1 && \
+    cd /mlir-clang && mkdir build && cd build \
+    && cmake -G Ninja ../llvm \
+         -DLLVM_ENABLE_PROJECTS="mlir;polly;clang;openmp" \
+         -DLLVM_BUILD_EXAMPLES=ON \
+         -DLLVM_TARGETS_TO_BUILD="host" \
+         -DCMAKE_BUILD_TYPE=Release \
+         -DLLVM_ENABLE_ASSERTIONS=ON \
+         -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polygeist \
+    && ninja all \
+    && ninja install
+
+# Install Polymer
+FROM base as polymer-build
+
+RUN git clone -b pact --single-branch --recursive https://github.com/kumasento/polymer \
+    && cd polymer \
+    && git checkout pact \
+    && sed -ie 's/git:/https:/g' .gitmodules \
+    && git submodule update --recursive --init \
+    && mkdir llvm/build \
+    && cd llvm/build \
+    && cmake ../llvm \
+      -DLLVM_ENABLE_PROJECTS="llvm;clang;mlir" \
+      -DLLVM_TARGETS_TO_BUILD="host" \
+      -DLLVM_ENABLE_ASSERTIONS=ON \
+      -DCMAKE_BUILD_TYPE=DEBUG \
+      -DLLVM_INSTALL_UTILS=ON \
+      -DCMAKE_C_COMPILER=clang \
+      -DCMAKE_CXX_COMPILER=clang++ \
+      -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polymer \
+      -G Ninja \
+    && ninja all \
+    && ninja install
+
+RUN cd polymer \
+    && rm -rf build && mkdir build && cd build \
+	&& cmake .. \
+		  -DCMAKE_BUILD_TYPE=DEBUG \
+		  -DMLIR_DIR=$PWD/../llvm/build/lib/cmake/mlir \
+		  -DLLVM_DIR=$PWD/../llvm/build/lib/cmake/llvm \
+		  -DLLVM_ENABLE_ASSERTIONS=ON \
+		  -DCMAKE_C_COMPILER=clang-9 \
+		  -DCMAKE_CXX_COMPILER=clang++-9 \
+		  -DLLVM_EXTERNAL_LIT=${PWD}/../llvm/build/bin/llvm-lit \
+          -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polymer \
+		  -G Ninja \
+    && ninja \
+    && ninja install
+
 # == Graphite Installation ==
 FROM base AS graphite-build
 
@@ -104,21 +159,22 @@ RUN git clone ${PPCG_REPO_URL} && \
 FROM base AS pocc-build
 
 ARG POCC_REPO_URL="https://sourceforge.net/projects/pocc/files/1.6/release/pocc-1.6.0-alpha-selfcontained.tar.gz"
+
 RUN wget -qO- ${POCC_REPO_URL} | \
-    tar xz --one-top-level=/pocc --strip-components 1 && \
-    cd /pocc && \
+    tar xz --one-top-level=/usr/local/polyhedral/pocc --strip-components 1 && \
+    cd /usr/local/polyhedral/pocc && \
     bash -x ./install.sh && \
-# ln -s /usr/local/polyhedral/pocc/bin/pocc /usr/local/bin/pocc
+    ln -s /usr/local/polyhedral/pocc/bin/pocc /usr/local/bin/pocc
 
 #rose installation
-FROM pocc-build AS rose-build
+FROM base AS rose-build
 
 ARG BOOST_URL="https://archives.boost.io/release/1.82.0/source/boost_1_82_0.tar.gz"
 RUN wget -qO- ${BOOST_URL} |  \
     tar xz --one-top-level=/boost --strip-components 1 && \
     cd /boost && \
     ./bootstrap.sh && \
-    ./b2 --prefix=/boost/install link=static install
+    ./b2 --prefix=/usr/local/polyhedral/rose install
 
 ARG ROSE_URL="https://github.com/rose-compiler/rose/archive/refs/tags/v0.11.100.0.tar.gz"
 
@@ -132,23 +188,38 @@ RUN wget -qO- ${ROSE_URL} | \
     /rose/configure \
         --prefix=/usr/local/polyhedral/rose \
         --enable-languages=c,c++ \
-        --with-boost=/boost/install && \
+        --with-boost=/usr/local/polyhedral/rose && \
     make -j core && \
     make install-core && \
     ln -s /usr/local/polyhedral/rose/bin/rose-compiler /usr/local/bin/rose-compiler
 
-# RUN export ROSE_ROOT=/usr/local  \
-#     export BOOST_ROOT="/boost/install" \
-#     export CXX=clang++ \
-#     export CC=clang && \
-#     cd /rose/projects/PolyOpt2 && \
-#     ./configure \
-#         --with-boost=${BOOST_ROOT} \
-#         --with-rose=${ROSE_ROOT} \
-#         --with-pocc-prefix=$POCC_INSTALL_ROOT
-#     ./install.sh && \
-#     make -j install
-#
+ARG POCC4ROSE_REPO_URL="https://sourceforge.net/projects/pocc/files/1.5/pocc-1.5.0-beta-selfcontained.tar.gz"
+
+RUN wget -qO- ${POCC4ROSE_REPO_URL} | \
+    tar xz --one-top-level=/usr/local/polyhedral/rose/pocc --strip-components 1 && \
+    cd /usr/local/polyhedral/rose/pocc && \
+    bash -x ./install.sh
+
+FROM rose-build as polyopt-build
+
+COPY polyopt_makefile.patch /rose
+RUN export ROSE_ROOT=/usr/local/polyhedral/rose \
+    export BOOST_ROOT=/usr/local/polyhedral/rose \
+    export CXX=clang++ \
+    export CC=clang && \
+    cd /rose/projects/PolyOpt2 && \
+    patch src/Makefile.am </rose/polyopt_makefile.patch && \
+    ./bootstrap.sh && \
+    ./configure \
+        --prefix=/usr/local/polyhedral/polyopt \
+        --with-boost=${BOOST_ROOT} \
+        --with-rose=${ROSE_ROOT} \
+        --with-pocc-prefix=/usr/local/polyhedral/rose/pocc \
+    && \
+    make -j && \
+    make -j install && \
+    ln -s /usr/local/polyhedral/polyopt/bin/PolyRose /usr/local/bin/polyopt
+
 # intel compiler
 FROM base AS intel-build
 

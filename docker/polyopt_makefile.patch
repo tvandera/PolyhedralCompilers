@@ -1,0 +1,14 @@
+--- src/Makefile.am.orig	2025-02-04 15:01:41.956878553 +0100
++++ src/Makefile.am	2025-02-04 15:02:41.297291998 +0100
+@@ -94,7 +94,10 @@
+ 
+ PolyRose_CPPFLAGS	= -Wno-deprecated
+ 
+-PolyRose_LDADD		= $(top_builddir)/polyopt/libpolyopt.la $(ROSE_ROOT)/lib/librose.la
++PolyRose_LDADD		= \
++			  $(top_builddir)/polyopt/libpolyopt.la\
++			  $(ROSE_ROOT)/lib/librose.la\
++                          $(POCC_INSTALL)/generators/clastannotation/clastannotation/libclastannotation.la
+ 
+ PolyRose_LDFLAGS	= -lboost_iostreams -lboost_system -lboost_chrono -L${BOOST_ROOT}/lib
+ #############################################################################
