@@ -1,7 +1,7 @@
 # Base Stage: Common build environment
 FROM ubuntu:20.04 AS base
 
-ENV POLYHEDRAL_DIR="/polyhedral"
+ENV POLYHEDRAL_DIR="/usr/local/polyhedral"
 
 # Install essential build tools and dependencies
 RUN apt-get update && \
@@ -225,19 +225,20 @@ FROM base AS intel-build
 
 COPY l_BaseKit_p_2021.4.0.3422.sh .
 COPY l_HPCKit_p_2021.4.0.3347.sh .
-RUN bash l_BaseKit_p_2021.4.0.3422.sh -a --silent --eula accept
-RUN bash l_HPCKit_p_2021.4.0.3347.sh -a --silent --eula accept
+RUN bash l_BaseKit_p_2021.4.0.3422.sh -a --silent --eula accept \
+    && bash l_HPCKit_p_2021.4.0.3347.sh -a --silent --eula accept \
+    && ln -s /opt/intel/oneapi/compiler/2021.4.0/linux/bin/intel64/icc /usr/local/bin/
 
 # polybench
 FROM base AS polybench-build
 ARG POLYBENCH_URL="https://sourceforge.net/projects/polybench/files/polybench-c-4.2.tar.gz"
-RUN wget -qO- ${POLYBENCH_URL} | tar xz --one-top-level=${POLYHEDRAL_DIR} --strip-components 1
+RUN wget -qO- ${POLYBENCH_URL} | tar xz --one-top-level=/usr/local/polyhedral/polybench --strip-components 1
 
 # Stage 4: Final Runtime Image
 FROM ubuntu:20.04 AS runtime
 
 # Install runtime dependencies
-RUN apt-get update &&
+RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     vim binutils g++ \
     libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 libquadmath0 && \
@@ -253,10 +254,12 @@ COPY --from=ppcg-build /usr/local /usr/local
 COPY --from=pocc-build /usr/local /usr/local
 COPY --from=polyopt-build /usr/local /usr/local
 COPY --from=intel-build /opt/intel /opt/intel
-COPY --from=polybench-build /polyhedral /polyhedral
+COPY --from=intel-build /usr/local /usr/local
+COPY --from=polybench-build /usr/local /usr/local
 
-COPY execute_polyhedral.sh /polyhedral
-COPY execute_polyhedral_syn.sh /polyhedral
+COPY execute_polyhedral.sh /usr/local/bin
+COPY execute_polyhedral_syn.sh /usr/local/bin
+COPY run_benchmarks.py /usr/local/bin
 
 COPY local.conf /etc/ld.so.conf.d/local.conf
 RUN ldconfig -v
