@@ -74,18 +74,18 @@ RUN wget -qO- ${POLYGEIST_URL} | \
 # Install Polymer
 FROM base as polymer-build
 
-RUN git clone -b pact --single-branch --recursive https://github.com/kumasento/polymer \
+RUN git config --global url."https://".insteadOf git:// \
+    && git clone -b pact --depth 1 \
+         --recurse-submodules \
+         https://github.com/kumasento/polymer \
     && cd polymer \
-    && git checkout pact \
-    && sed -ie 's/git:/https:/g' .gitmodules \
-    && git submodule update --recursive --init \
     && mkdir llvm/build \
     && cd llvm/build \
     && cmake ../llvm \
       -DLLVM_ENABLE_PROJECTS="llvm;clang;mlir" \
       -DLLVM_TARGETS_TO_BUILD="host" \
       -DLLVM_ENABLE_ASSERTIONS=ON \
-      -DCMAKE_BUILD_TYPE=DEBUG \
+      -DCMAKE_BUILD_TYPE=Release \
       -DLLVM_INSTALL_UTILS=ON \
       -DCMAKE_C_COMPILER=clang \
       -DCMAKE_CXX_COMPILER=clang++ \
@@ -237,21 +237,22 @@ RUN wget -qO- ${POLYBENCH_URL} | tar xz --one-top-level=${POLYHEDRAL_DIR} --stri
 FROM ubuntu:20.04 AS runtime
 
 # Install runtime dependencies
-RUN export DEBIAN_FRONTEND=noninteractive && \
-    apt-get update && apt-get install -y --no-install-recommends \
-    vim binutils libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 && \
+RUN apt-get update &&
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    vim binutils g++ \
+    libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 libquadmath0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
-RUN rm -rf /usr/local
-
-WORKDIR ${POLYHEDRAL_DIR}
-
 COPY --from=llvm-build /usr/local /usr/local
+COPY --from=polygeist-build /usr/local /usr/local
+COPY --from=polymer-build /usr/local /usr/local
 COPY --from=graphite-build /usr/local /usr/local
 COPY --from=pluto-build /usr/local /usr/local
 COPY --from=ppcg-build /usr/local /usr/local
 COPY --from=pocc-build /usr/local /usr/local
+COPY --from=polyopt-build /usr/local /usr/local
+COPY --from=intel-build /opt/intel /opt/intel
 COPY --from=polybench-build /polyhedral /polyhedral
 
 COPY execute_polyhedral.sh /polyhedral
