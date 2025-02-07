@@ -240,7 +240,7 @@ FROM ubuntu:20.04 AS runtime
 # Install runtime dependencies
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    vim binutils g++ \
+    vim binutils g++ python3 \
     libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 libquadmath0 && \
     rm -rf /var/lib/apt/lists/*
 
