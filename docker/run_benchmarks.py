@@ -1,8 +1,13 @@
 import argparse
 import subprocess
+import datetime
+import os
 
 import logging
 logging.basicConfig(level = logging.INFO)
+
+output_base_path = "/work/output_data/" + datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
+print(f"{output_base_path=}")
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -36,14 +41,25 @@ def get_bench_path(spec):
     return selected
 
 
-def cmd(c):
-    print("Executing: ", c)
-    subprocess.check_call(c, shell=True)
+def cmd(command, phase = None):
+    if phase is None:
+        phase = datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
+
+    try:
+        with open(f"output_{phase}.log", "w") as output:
+            subprocess.check_call(command, shell=True, stdout=output, stderr=subprocess.STDOUT)
+    except subprocess.CalledProcessError as e:
+        with open(f"output_{phase}.log", "r") as output:
+            print(output.read())
+        raise e
+
+
+
 
 def run_benchmark(paths, compilers, debug):
     base_path, sub_path, bench = paths
 
-    restrict = "-DPOLYBENCH_USE_RESTRICT -fopenmp"
+    restrict = " -DPOLYBENCH_USE_RESTRICT -fopenmp "
     common_args  = f"-DPOLYBENCH_TIME -DEXTRALARGE_DATASET -DPOLYBENCH_DUMP_ARRAYS -DPOLYBENCH_USE_SCALAR_LB -DPOLYBENCH_USE_C99_PROTO "
     common_args += f"-O3 -march=native "
     common_args += f"-I {base_path}/utilities -I {base_path}/{sub_path}/{bench} "
@@ -57,8 +73,12 @@ def run_benchmark(paths, compilers, debug):
     }
 
     for compiler in compilers:
+        rundir = output_base_path + f"/{compiler}/{bench}"
+        os.makedirs(rundir)
+        os.chdir(rundir)
+        print(f"{rundir=}")
         cmd(compile_commands[compiler])
-        cmd(f"./{bench}_time 2> ./output_data/{bench}_{compiler}.out")
+        cmd(f"./{bench}_time 2> ./{bench}_{compiler}.out")
         print(f"{compiler} run completed.")
 
 if __name__ == "__main__":
