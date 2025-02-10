@@ -241,7 +241,7 @@ FROM ubuntu:20.04 AS runtime
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     vim binutils g++ python3 \
-    libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-cpp9 libquadmath0 && \
+    libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-9-dev libclang-cpp9 libquadmath0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
