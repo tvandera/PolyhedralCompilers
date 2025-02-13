@@ -46,15 +46,20 @@ def get_bench_path(spec):
     return selected
 
 
-def cmd(command, phase = None):
+def cmd(command, stdout = None, stderr=None, phase = None):
     if phase is None:
         phase = datetime.datetime.today().strftime("%Y%m%d-%H%M%S")
+    if stdout is None:
+        stdout = f"output_{phase}.log"
+    if stderr is None:
+        stderr = f"error_{phase}.log"
 
     try:
-        with open(f"output_{phase}.log", "w") as output:
-            subprocess.check_call(command, shell=True, stdout=output, stderr=subprocess.STDOUT)
+        with open(stdout, "w") as output, open(stdout, "w") as error:
+            command_str = " ".join(command)
+            subprocess.check_call(command_str, shell=True, stdout=output, stderr=error, timeout=10*60)
     except subprocess.CalledProcessError as e:
-        print(f"Command: \"{command}\" failed")
+        logging.warning(f"Command: \"{command_str}\" failed")
 
 
 
@@ -62,29 +67,30 @@ def cmd(command, phase = None):
 def run_benchmark(paths, precompilers, compilers, run=True, debug=False):
     base_path, sub_path, bench = paths
 
-    include_args = f" -I {base_path}/utilities -I {base_path}/{sub_path}/{bench} "
-    restrict_args = " -DPOLYBENCH_USE_RESTRICT -fopenmp "
+    include_args = [ "-I", f"{base_path}/utilities", "-I", f"{base_path}/{sub_path}/{bench}" ]
+    restrict_args = [ "-DPOLYBENCH_USE_RESTRICT", "-fopenmp" ]
 
-    common_args  = f"-DPOLYBENCH_TIME -DEXTRALARGE_DATASET -DPOLYBENCH_DUMP_ARRAYS -DPOLYBENCH_USE_SCALAR_LB -DPOLYBENCH_USE_C99_PROTO "
-    common_args += f"-O3 -march=native "
-    common_args += f"{base_path}/utilities/polybench.c {bench}.*.c -o {bench}_time -lm "
+    common_args  = [ "-DPOLYBENCH_TIME", "-DMINI_DATASET", "-DPOLYBENCH_USE_SCALAR_LB", "-DPOLYBENCH_USE_C99_PROTO", ]
+    common_args += [ "-O3", "-march=native" ]
+    common_args += [ f"{base_path}/utilities/polybench.c", f"{bench}.*.c" , "-o", f"{bench}_time", "-lm" ]
     common_args += include_args
     compile_commands = {
-        "gcc":   "graphite-gcc -ffast-math " + common_args + restrict_args,
-        "icc":   "icc -fp-model=fast " + common_args + restrict_args,
-        "rose":  "rose-compiler -ffast-math "  + common_args,
-        "polly": "polly-clang -ffast-math " + common_args + restrict_args,
-        "polyopt": "polyopt --polyopt-scalar-privatization --polyopt-safe-math-func " + common_args,
-        "polygeist": "polygeist -ffast-math " + common_args,
+        "gcc":       [ "graphite-gcc", "-ffast-math" ] + common_args + restrict_args,
+        "icc":       [ "icc", "-fp-model=fast" ] + common_args + restrict_args,
+        "rose":      [ "rose-compiler", "-ffast-math" ] + common_args,
+        "polly":     [ "polly-clang", "-ffast-math" ] + common_args + restrict_args,
+        "polyopt":   [ "polyopt", "--polyopt-scalar-privatization --polyopt-safe-math-func" ] + common_args,
+        "polygeist": [ "polygeist", "-ffast-math" ] + common_args,
     }
 
+    bench_c = f"{base_path}/{sub_path}/{bench}/{bench}.c"
     precompile_commands = {
-        "none": f"cp {base_path}/{sub_path}/{bench}/{bench}.c {bench}.none.c",
-        "ppcg": f"ppcg --tile --target=c --openmp {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
-        "pluto1": f"polycc --tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
-        "pluto2": f"polycc --l2tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
-        "pluto3": f"polycc --diamond-tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
-        "pocc": f"pocc --pluto-tile --pluto-parallel --pragmatizer --vectorizer --pluto-scalpriv --pluto-fuse smartfuse --output {bench}.pocc.c {base_path}/{sub_path}/{bench}/{bench}.c ",
+        "none":   [ "cp", bench_c, f"{bench}.none.c" ],
+        "ppcg":   [ "ppcg", "--tile", "--target=c", "--openmp", bench_c ] + include_args,
+        "pluto1": [ "polycc", "--tile", "--parallel", "--smartfuse", "--prevector", bench_c ],
+        "pluto2": [ "polycc", "--l2tile", "--parallel", "--smartfuse", "--prevector", bench_c ],
+        "pluto3": [ "polycc", "--diamond-tile", "--parallel", "--smartfuse", "--prevector", bench_c ],
+        "pocc":   [ "pocc", "--pluto-tile", "--pluto-parallel", "--pragmatizer", "--vectorizer", "--pluto-scalpriv", "--pluto-fuse smartfuse", "--output", f"{bench}.pocc.c", bench_c ],
     }
 
     for precompiler in precompilers:
@@ -92,14 +98,15 @@ def run_benchmark(paths, precompilers, compilers, run=True, debug=False):
             rundir = output_base_path + f"/{bench}/{precompiler}/{compiler}"
             os.makedirs(rundir)
             os.chdir(rundir)
-            print(f"{rundir=}")
+            logging.info(f"{rundir=}")
 
-            cmd(precompile_commands[precompiler])
-            cmd(compile_commands[compiler])
-            print(f"{rundir}: compile completed.")
+            cmd(precompile_commands[precompiler], phase="precompile")
+            cmd(compile_commands[compiler], phase="compile")
+            logging.info(f"{rundir}: compile completed.")
             if run:
-                cmd(f"./{bench}_time 2> ./{bench}_{compiler}.out")
-                print(f"{rundir}: run completed.")
+                cmd([ f"./{bench}_time", ], stderr=f"{bench}.err", stdout=f"{bench}.out", phase="run")
+                with open(f"{bench}.out") as f: time = f.read().strip()
+                logging.info(f"{rundir}: run completed - took {time}.")
 
 if __name__ == "__main__":
     args = parse_arguments()
