@@ -75,15 +75,16 @@ def run_benchmark(paths, precompilers, compilers, run=True, debug=False):
         "rose":  "rose-compiler -ffast-math "  + common_args,
         "polly": "polly-clang -ffast-math " + common_args + restrict_args,
         "polyopt": "polyopt --polyopt-scalar-privatization --polyopt-safe-math-func " + common_args,
+        "polygeist": "polygeist -ffast-math " + common_args,
     }
 
     precompile_commands = {
         "none": f"cp {base_path}/{sub_path}/{bench}/{bench}.c {bench}.none.c",
         "ppcg": f"ppcg --tile --target=c --openmp {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
-        "pluto1": f"polycc --tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
-        "pluto2": f"polycc --l2tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
-        "pluto3": f"polycc --diamond-tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
-        "pocc": f"pocc --pluto-tile --pluto-parallel --pragmatizer --vectorizer --pluto-scalpriv --pluto-fuse smartfuse {base_path}/{sub_path}/{bench}/{bench}.c " + include_args,
+        "pluto1": f"polycc --tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
+        "pluto2": f"polycc --l2tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
+        "pluto3": f"polycc --diamond-tile  --parallel --smartfuse --prevector {base_path}/{sub_path}/{bench}/{bench}.c ",
+        "pocc": f"pocc --pluto-tile --pluto-parallel --pragmatizer --vectorizer --pluto-scalpriv --pluto-fuse smartfuse --output {bench}.pocc.c {base_path}/{sub_path}/{bench}/{bench}.c ",
     }
 
     for precompiler in precompilers:
