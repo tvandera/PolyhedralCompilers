@@ -6,8 +6,10 @@ ENV POLYHEDRAL_DIR="/usr/local/polyhedral"
 # Install essential build tools and dependencies
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        build-essential libtool autoconf automake libltdl-dev pkg-config flex bison libgmp-dev \
-        clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev texinfo ninja-build \
+        build-essential libtool autoconf automake libltdl-dev pkg-config flex bison \
+        patchelf \
+        libgmp-dev clang-9 libclang-9-dev llvm-9 llvm-9-tools llvm-9-dev libomp-9-dev \
+        texinfo ninja-build \
         libxml2-dev ccache ghostscript \
         git wget curl rsync gpg less vim \
         python3 python3-dev python3-pip python3-pandas python3-numpy python3-scipy \
@@ -32,6 +34,8 @@ RUN update-alternatives --install /usr/bin/llvm-config llvm-config /usr/bin/llvm
     update-alternatives --install /usr/bin/FileCheck FileCheck /usr/bin/FileCheck-9 100 && \
     update-alternatives --install /usr/bin/clang clang /usr/bin/clang-9 100 && \
     update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-9 100
+
+COPY copy_with_libs.sh /usr/bin/copy_with_libs
 
 # Stage 2: LLVM and Polly Build
 FROM base AS llvm-build
@@ -59,17 +63,28 @@ FROM base as polygeist-build
 
 ARG POLYGEIST_URL="https://github.com/llvm/Polygeist/archive/refs/heads/main-042621.tar.gz"
 RUN wget -qO- ${POLYGEIST_URL} | \
-    tar xz --one-top-level=/mlir-clang --strip-components 1 && \
-    cd /mlir-clang && mkdir build && cd build \
+    tar xz --one-top-level=/polygeist --strip-components 1 && \
+    cd /polygeist && mkdir build && cd build \
     && cmake -G Ninja ../llvm \
          -DLLVM_ENABLE_PROJECTS="mlir;polly;clang;openmp" \
-         -DLLVM_BUILD_EXAMPLES=ON \
+         -DLLVM_BUILD_EXAMPLES=OFF \
          -DLLVM_TARGETS_TO_BUILD="host" \
          -DCMAKE_BUILD_TYPE=Release \
          -DLLVM_ENABLE_ASSERTIONS=ON \
          -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polygeist \
-    && ninja all \
-    && ninja install
+    && ninja all
+
+RUN cd /polygeist/build \
+    && ninja install \
+    && find /usr/local/polyhedral/polygeist/bin -maxdepth 1 \! -type d -delete \
+    && find /usr/local/polyhedral/polygeist/lib -maxdepth 1 \! -type d -delete \
+    && find /usr/local/polyhedral/polygeist/libexec -maxdepth 1 \! -type d -delete \
+    && copy_with_libs bin/clang /usr/local/polyhedral/polygeist \
+    && copy_with_libs bin/mlir-clang /usr/local/polyhedral/polygeist \
+    && copy_with_libs bin/mlir-opt /usr/local/polyhedral/polygeist \
+    && copy_with_libs bin/mlir-translate /usr/local/polyhedral/polygeist \
+    && cp lib/libomp.so  /usr/local/polyhedral/polygeist/lib
+
 
 # Install Polymer
 FROM base as polymer-build
@@ -91,8 +106,7 @@ RUN git config --global url."https://".insteadOf git:// \
       -DCMAKE_CXX_COMPILER=clang++ \
       -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polymer \
       -G Ninja \
-    && ninja all \
-    && ninja install
+    && ninja all
 
 RUN cd polymer \
     && rm -rf build && mkdir build && cd build \
@@ -106,8 +120,19 @@ RUN cd polymer \
 		  -DLLVM_EXTERNAL_LIT=${PWD}/../llvm/build/bin/llvm-lit \
           -DCMAKE_INSTALL_PREFIX=/usr/local/polyhedral/polymer \
 		  -G Ninja \
-    && ninja \
-    && ninja install
+    && ninja
+
+RUN cd polymer/build \
+    && LD_LIBRARY_PATH=./pluto/lib copy_with_libs bin/polymer-opt /usr/local/polyhedral/polymer \
+    && LD_LIBRARY_PATH=./pluto/lib copy_with_libs bin/polymer-translate /usr/local/polyhedral/polymer \
+    && ln -s /usr/local/polyhedral/polymer/bin/polymer-opt /usr/local/bin/ \
+    && ln -s /usr/local/polyhedral/polymer/bin/polymer-translate /usr/local/bin/
+
+FROM base as polymer-polygeist-build
+
+COPY --from=polygeist-build /usr/local /usr/local
+COPY --from=polymer-build /usr/local /usr/local
+COPY polygeist.sh /usr/local/bin/polygeist
 
 # == Graphite Installation ==
 FROM base AS graphite-build
@@ -136,7 +161,9 @@ RUN wget -qO- ${PLUTO_REPO_URL} | tar xz --one-top-level=/pluto --strip-componen
     ./configure --prefix=/usr/local/polyhedral/pluto && \
     make -j$(nproc) && \
     sed -i -e 's#=/pluto/src/#=/usr/local/polyhedral/pluto/bin/#' polycc && \
-    sed -i -e 's#=/pluto/#=/usr/local/polyhedral/pluto/bin/#' polycc && \
+    sed -i -e 's#=/pluto/src/#=/usr/local/polyhedral/pluto/bin/#' polycc && \
+    sed -i -e 's#^/pluto/#/usr/local/polyhedral/pluto/bin/#' polycc && \
+    sed -i -e 's#^/pluto/#/usr/local/polyhedral/pluto/bin/#' polycc && \
     make install && \
     install inscop /usr/local/polyhedral/pluto/bin/ && \
     ln -s /usr/local/polyhedral/pluto/bin/polycc /usr/local/bin/polycc
@@ -241,13 +268,12 @@ FROM ubuntu:20.04 AS runtime
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     vim binutils g++ python3 \
-    libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-9-dev libclang-cpp9 libquadmath0 && \
+    libc-dev libgmp10 libgcc1 libstdc++6 zlib1g libclang-9-dev libclang-cpp9 libomp-9-dev libquadmath0 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy build artifacts from previous stages
 COPY --from=llvm-build /usr/local /usr/local
-COPY --from=polygeist-build /usr/local /usr/local
-COPY --from=polymer-build /usr/local /usr/local
+
 COPY --from=graphite-build /usr/local /usr/local
 COPY --from=pluto-build /usr/local /usr/local
 COPY --from=ppcg-build /usr/local /usr/local
