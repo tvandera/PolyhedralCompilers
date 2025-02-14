@@ -1,11 +1,13 @@
 #!/bin/bash
+# copies $exe and dynamic library deps to $prefix
 
 set -e
 
 exe="$1"
 prefix="$2"
 
-
+# copies $fullpath to $prefix/lib, or $prefix/bin
+# updates rpath to point to ../lib
 function to_prefix {
     prefix="$1"
     fullpath="$2"
@@ -25,6 +27,9 @@ function to_prefix {
     patchelf --set-rpath '$ORIGIN/../lib' "$dest"
 }
 
+# copies $bin to $prefix
+# does the same for dynamic library deps
+# updates rpath to point to ../lib
 copy_libs() {
     local bin="$1"
     ldd "$bin" | awk '{print $3}' | grep -v '^$' | while read -r lib; do
